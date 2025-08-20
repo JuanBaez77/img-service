@@ -25,7 +25,7 @@ app.include_router(images.router, prefix="/api/v1", tags=["imágenes"])
 async def root():
     """Endpoint raíz"""
     return {
-        "message": "API de Gestión de Imágenes - Nivel Intermedio",
+        "message": "API de Gestión de Imágenes",
         "version": "2.0.0",
         "features": [
             "Almacenamiento en MinIO (compatible con S3)",
