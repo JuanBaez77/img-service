@@ -104,6 +104,100 @@ async def get_image_url(filename: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error obteniendo URL: {str(e)}")
 
+@router.get("/images/{filename}/proxy")
+async def get_image_proxy(filename: str):
+    """Servir imagen directamente desde MinIO (evita problemas de CORS)"""
+    try:
+        if not minio_client.image_exists(filename):
+            raise HTTPException(status_code=404, detail="Archivo no encontrado")
+        
+        if not is_valid_image(filename):
+            raise HTTPException(status_code=400, detail="Formato de archivo no válido")
+        
+        # Obtener datos de la imagen desde MinIO
+        image_data = minio_client.get_image_data(filename)
+        
+        # Obtener content-type de MinIO
+        stat = minio_client.client.stat_object(minio_client.bucket, filename)
+        content_type = stat.content_type or "image/*"
+        
+        # Servir imagen con headers apropiados para CORS
+        return Response(
+            content=image_data,
+            media_type=content_type,
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET, OPTIONS",
+                "Access-Control-Allow-Headers": "*",
+                "Cache-Control": "public, max-age=3600",  # Cache por 1 hora
+                "Content-Disposition": f"inline; filename={filename}"
+            }
+        )
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error obteniendo imagen: {str(e)}")
+
+@router.options("/images/{filename}/proxy")
+async def options_image_proxy(filename: str):
+    """Endpoint OPTIONS para CORS preflight"""
+    return Response(
+        status_code=200,
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
+            "Access-Control-Max-Age": "86400"  # Cache preflight por 24 horas
+        }
+    )
+
+@router.get("/images/{filename}/thumbnail")
+async def get_image_thumbnail(
+    filename: str, 
+    width: int = Query(100, gt=0, le=1000, description="Ancho del thumbnail"),
+    height: int = Query(100, gt=0, le=1000, description="Alto del thumbnail")
+):
+    """Obtener thumbnail de imagen (procesamiento síncrono para previews)"""
+    try:
+        if not minio_client.image_exists(filename):
+            raise HTTPException(status_code=404, detail="Archivo no encontrado")
+        
+        if not is_valid_image(filename):
+            raise HTTPException(status_code=400, detail="Formato de archivo no válido")
+        
+        # Obtener datos de la imagen desde MinIO
+        image_data = minio_client.get_image_data(filename)
+        
+        # Procesar imagen para thumbnail
+        with Image.open(io.BytesIO(image_data)) as img:
+            # Convertir a RGB si es necesario
+            if img.mode in ('RGBA', 'LA', 'P'):
+                img = img.convert('RGB')
+            
+            # Redimensionar manteniendo proporción
+            img.thumbnail((width, height), Image.Resampling.LANCZOS)
+            
+            # Guardar en buffer
+            buffer = io.BytesIO()
+            img.save(buffer, format='JPEG', quality=85)
+            buffer.seek(0)
+            thumbnail_data = buffer.getvalue()
+        
+        # Servir thumbnail con headers CORS
+        return Response(
+            content=thumbnail_data,
+            media_type="image/jpeg",
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET, OPTIONS",
+                "Access-Control-Allow-Headers": "*",
+                "Cache-Control": "public, max-age=3600",
+                "Content-Disposition": f"inline; filename=thumb_{filename}"
+            }
+        )
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generando thumbnail: {str(e)}")
+
 @router.post("/resize/{filename}", response_model=ResizeResponse)
 async def resize_image(
     filename: str,

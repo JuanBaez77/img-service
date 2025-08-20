@@ -39,6 +39,8 @@ async def root():
             "upload": "/api/v1/upload",
             "list_images": "/api/v1/images",
             "get_image_url": "/api/v1/images/{filename}",
+            "get_image_proxy": "/api/v1/images/{filename}/proxy",
+            "get_image_thumbnail": "/api/v1/images/{filename}/thumbnail?width=X&height=Y",
             "resize_image": "/api/v1/resize/{filename}",
             "task_status": "/api/v1/tasks/{task_id}",
             "delete_image": "/api/v1/images/{filename}"
